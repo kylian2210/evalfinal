@@ -97,3 +97,6 @@ Dans **Settings → Branches** sur `main` : *Require a pull request before mergi
 ## Convention de commits
 
 Les messages suivent le format [Conventional Commits](https://www.conventionalcommits.org/) : `feat:`, `fix:`, `ci:`, `docs:`, `build:`, `chore:`, etc.
+
+
+<!-- Verification du pipeline CI/CD via une Pull Request -->
