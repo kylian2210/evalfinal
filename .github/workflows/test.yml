@@ -1,0 +1,64 @@
+name: Test fonctionnel (PR)
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  functional-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@v4
+
+      - name: Creer un reseau Docker
+        run: docker network create testnet
+
+      - name: Demarrer MariaDB
+        run: |
+          docker run -d --name db --network testnet \
+            -e MYSQL_ROOT_PASSWORD=rootpass \
+            -e MYSQL_DATABASE=test \
+            mariadb:11
+
+      - name: Attendre que MariaDB soit prete
+        run: |
+          for i in $(seq 1 30); do
+            if docker exec db mariadb-admin ping -h 127.0.0.1 -uroot -prootpass --silent; then
+              echo "MariaDB prete."; exit 0
+            fi
+            echo "Attente de MariaDB... ($i)"; sleep 2
+          done
+          echo "MariaDB n'a pas demarre a temps."; docker logs db; exit 1
+
+      - name: Construire l'image
+        run: docker build -t flask-app:test .
+
+      - name: Demarrer l'application
+        run: |
+          docker run -d --name app --network testnet -p 5000:5000 \
+            -e DB_HOST=db -e DB_USER=root -e DB_PASSWORD=rootpass -e DB_NAME=test \
+            flask-app:test
+
+      - name: Attendre que l'application reponde
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:5000/ >/dev/null; then echo "App en ligne."; exit 0; fi
+            echo "Attente de l'app... ($i)"; sleep 2
+          done
+          echo "L'application n'a pas repondu a temps."; docker logs app; exit 1
+
+      - name: Verifier la connexion a la base
+        run: |
+          RESPONSE=$(curl -s http://localhost:5000/)
+          echo "Reponse: $RESPONSE"
+          if echo "$RESPONSE" | grep -q "Database Connection Status: Connected"; then
+            echo "Test reussi."
+          else
+            echo "Test echoue."; docker logs app; exit 1
+          fi
+
+      - name: Nettoyage
+        if: always()
+        run: docker rm -f app db || true
